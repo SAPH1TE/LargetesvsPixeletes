@@ -143,9 +143,34 @@
             background: rgba(255,0,0,0.7);
         }
 
+        .status.local {
+            background: rgba(255,165,0,0.7);
+        }
+
+        .reset-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .reset-button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.05);
+        }
+
         @media (max-width: 768px) {
             .team-title {
                 font-size: 2.5rem;
+                letter-spacing: 1px;
             }
             
             .vote-count {
@@ -161,11 +186,40 @@
             .vs-text {
                 font-size: 2rem;
             }
+            
+            .status {
+                font-size: 0.8rem;
+                padding: 8px 12px;
+            }
+            
+            .reset-button {
+                font-size: 0.7rem;
+                padding: 6px 12px;
+            }
+        }
+
+        /* Loading animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
-    <div class="status" id="status">Setting up...</div>
+    <div class="status" id="status">
+        <span class="loading"></span> Connecting...
+    </div>
+
+    <button class="reset-button" onclick="resetVotes()" title="Reset all votes">Reset</button>
 
     <div class="team-side largetes" onclick="vote('largetes', event)">
         <div class="team-title">Largetes</div>
@@ -181,69 +235,90 @@
         <div class="vote-count" id="pixeletes-count">0 votes</div>
     </div>
 
-    <!-- Firebase SDK -->
-        // Import Firebase modules
-	<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-	<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
-	<script>
-        // Guys, dont bug me abt this i dont care about this project in the slightest, this is just because some kid wont stop being a meat rider and tryna settle something hell even this code is from claude 3.5 sonnet
-	const firebaseConfig = {
- 	 apiKey: "AIzaSyBA1R2EWRhjGKNDzJfx-f8ynUuepeTQN3I",
-	  authDomain: "largetesvotething.firebaseapp.com",
-	  databaseURL: "https://largetesvotething-default-rtdb.firebaseio.com",
-	  projectId: "largetesvotething",
-	  storageBucket: "largetesvotething.firebasestorage.app",
-	  messagingSenderId: "898599644757",
-	  appId: "1:898599644757:web:8ae8f7f8dc626978e66edc",
-	  measurementId: "G-KVZE1NHSKQ"
-	};
-
+    <!-- Firebase SDK - Using modular v9+ syntax -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, onValue, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+	   // Guys Gals And Seals And Bespoke Samsung Refrigerators, dont bug me abt this exposed key i dont care about this project in the slightest, this is just because some kid wont stop being a meat rider and tryna settle something hell even this code is from claude 3.5 sonnet
+        const firebaseConfig = {
+            apiKey: "AIzaSyBA1R2EWRhjGKNDzJfx-f8ynUuepeTQN3I",
+            authDomain: "largetesvotething.firebaseapp.com",
+            databaseURL: "https://largetesvotething-default-rtdb.firebaseio.com",
+            projectId: "largetesvotething",
+            storageBucket: "largetesvotething.firebasestorage.app",
+            messagingSenderId: "898599644757",
+            appId: "1:898599644757:web:8ae8f7f8dc626978e66edc",
+            measurementId: "G-KVZE1NHSKQ"
+        };
 
         let app, database;
         let isConnected = false;
+        let connectionAttempts = 0;
+        const maxRetries = 3;
 
-        // Initialize Firebase
-        try {
-            app = initializeApp(firebaseConfig);
-            database = getDatabase(app);
-            setupRealtimeListeners();
-            updateStatus('Connected - Live Sync Active', 'connected');
-            isConnected = true;
-        } catch (error) {
-            console.error('Firebase setup failed:', error);
-            updateStatus('Offline Mode - Votes won\'t sync', 'disconnected');
-            // Fall back to local storage
-            setupLocalMode();
+        // Initialize Firebase with error handling
+        async function initializeFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                database = getDatabase(app);
+                await setupRealtimeListeners();
+                updateStatus('🔗 Live Sync Active', 'connected');
+                isConnected = true;
+            } catch (error) {
+                console.error('Firebase setup failed:', error);
+                connectionAttempts++;
+                
+                if (connectionAttempts < maxRetries) {
+                    updateStatus(`⚠️ Retrying connection... (${connectionAttempts}/${maxRetries})`, 'disconnected');
+                    setTimeout(initializeFirebase, 2000);
+                } else {
+                    updateStatus('📱 Local Mode - Votes stored locally', 'local');
+                    setupLocalMode();
+                }
+            }
         }
 
         function setupRealtimeListeners() {
-            // Listen for largetes votes
-            const largetesRef = ref(database, 'votes/largetes');
-            onValue(largetesRef, (snapshot) => {
-                const count = snapshot.val() || 0;
-                updateVoteDisplay('largetes', count);
-            });
+            return new Promise((resolve, reject) => {
+                try {
+                    // Listen for largetes votes
+                    const largetesRef = ref(database, 'votes/largetes');
+                    onValue(largetesRef, (snapshot) => {
+                        const count = snapshot.val() || 0;
+                        updateVoteDisplay('largetes', count);
+                    });
 
-            // Listen for pixeletes votes  
-            const pixeletesRef = ref(database, 'votes/pixeletes');
-            onValue(pixeletesRef, (snapshot) => {
-                const count = snapshot.val() || 0;
-                updateVoteDisplay('pixeletes', count);
+                    // Listen for pixeletes votes  
+                    const pixeletesRef = ref(database, 'votes/pixeletes');
+                    onValue(pixeletesRef, (snapshot) => {
+                        const count = snapshot.val() || 0;
+                        updateVoteDisplay('pixeletes', count);
+                    });
+                    
+                    resolve();
+                } catch (error) {
+                    reject(error);
+                }
             });
         }
 
         function setupLocalMode() {
-            // Local fallback mode
             const saved = localStorage.getItem('teamVotes');
             if (saved) {
-                const votes = JSON.parse(saved);
-                updateVoteDisplay('largetes', votes.largetes || 0);
-                updateVoteDisplay('pixeletes', votes.pixeletes || 0);
+                try {
+                    const votes = JSON.parse(saved);
+                    updateVoteDisplay('largetes', votes.largetes || 0);
+                    updateVoteDisplay('pixeletes', votes.pixeletes || 0);
+                } catch (error) {
+                    console.error('Error parsing saved votes:', error);
+                    localStorage.removeItem('teamVotes');
+                }
             }
         }
 
+        // Make functions globally available
         window.vote = function(team, event) {
-            if (isConnected) {
+            if (isConnected && database) {
                 // Firebase mode - use transaction for atomic increment
                 const teamRef = ref(database, `votes/${team}`);
                 runTransaction(teamRef, (currentValue) => {
@@ -252,33 +327,70 @@
                     createClickEffect(event);
                 }).catch((error) => {
                     console.error('Vote failed:', error);
-                    updateStatus('Vote failed - try again', 'disconnected');
+                    updateStatus('❌ Vote failed - using local mode', 'local');
+                    fallbackToLocal(team, event);
                 });
             } else {
                 // Local mode fallback
+                fallbackToLocal(team, event);
+            }
+        }
+
+        function fallbackToLocal(team, event) {
+            try {
                 const saved = JSON.parse(localStorage.getItem('teamVotes') || '{"largetes":0,"pixeletes":0}');
                 saved[team]++;
+                saved.lastUpdated = Date.now();
                 localStorage.setItem('teamVotes', JSON.stringify(saved));
                 updateVoteDisplay(team, saved[team]);
                 createClickEffect(event);
+            } catch (error) {
+                console.error('Local storage failed:', error);
+            }
+        }
+
+        window.resetVotes = function() {
+            if (confirm('Are you sure you want to reset all votes?')) {
+                if (isConnected && database) {
+                    // Reset Firebase
+                    Promise.all([
+                        runTransaction(ref(database, 'votes/largetes'), () => 0),
+                        runTransaction(ref(database, 'votes/pixeletes'), () => 0)
+                    ]).then(() => {
+                        updateStatus('🔄 Votes reset successfully', 'connected');
+                    }).catch((error) => {
+                        console.error('Reset failed:', error);
+                        updateStatus('❌ Reset failed', 'disconnected');
+                    });
+                } else {
+                    // Reset local storage
+                    localStorage.setItem('teamVotes', JSON.stringify({"largetes":0,"pixeletes":0,"lastUpdated":Date.now()}));
+                    updateVoteDisplay('largetes', 0);
+                    updateVoteDisplay('pixeletes', 0);
+                    updateStatus('🔄 Local votes reset', 'local');
+                }
             }
         }
 
         function updateVoteDisplay(team, count) {
             const element = document.getElementById(`${team}-count`);
-            element.textContent = `${count} vote${count !== 1 ? 's' : ''}`;
-            
-            // Add update animation
-            element.classList.add('updating');
-            setTimeout(() => {
-                element.classList.remove('updating');
-            }, 300);
+            if (element) {
+                element.textContent = `${count.toLocaleString()} vote${count !== 1 ? 's' : ''}`;
+                
+                // Add update animation
+                element.classList.add('updating');
+                setTimeout(() => {
+                    element.classList.remove('updating');
+                }, 300);
+            }
         }
 
         function updateStatus(message, className) {
             const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = `status ${className}`;
+            if (status) {
+                status.innerHTML = message;
+                status.className = `status ${className}`;
+            }
         }
 
         function createClickEffect(event) {
@@ -295,9 +407,22 @@
             event.currentTarget.appendChild(effect);
             
             setTimeout(() => {
-                effect.remove();
+                if (effect.parentNode) {
+                    effect.remove();
+                }
             }, 600);
         }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initializeFirebase);
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !isConnected) {
+                updateStatus('🔄 Attempting reconnection...', 'disconnected');
+                setTimeout(initializeFirebase, 1000);
+            }
+        });
     </script>
 </body>
 </html>
