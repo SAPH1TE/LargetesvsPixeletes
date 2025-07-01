@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Largetes vs Pixeletes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            height: 100vh;
+            display: flex;
+            background: linear-gradient(135deg, #ff4757 0%, #ff4757 50%, #3742fa 50%, #3742fa 100%);
+            overflow: hidden;
+        }
+
+        .team-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .team-side:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+
+        .largetes {
+            background: linear-gradient(135deg, #ff4757, #ff3742);
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .pixeletes {
+            background: linear-gradient(135deg, #3742fa, #2f32e2);
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .team-title {
+            font-size: 4rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            transform: perspective(500px) rotateX(15deg);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        .vote-count {
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: rgba(255,255,255,0.2);
+            padding: 15px 30px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255,255,255,0.3);
+            margin-top: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .vote-count.updating {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(255,255,255,0.5);
+        }
+
+        .vs-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            background: rgba(0,0,0,0.8);
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid white;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        .vs-text {
+            color: white;
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .click-effect {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border: 3px solid rgba(255,255,255,0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: clickRipple 0.6s ease-out;
+        }
+
+        @keyframes clickRipple {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        .team-side:active {
+            transform: scale(0.95);
+        }
+
+        .status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            z-index: 100;
+        }
+
+        .status.connected {
+            background: rgba(0,128,0,0.7);
+        }
+
+        .status.disconnected {
+            background: rgba(255,0,0,0.7);
+        }
+
+        @media (max-width: 768px) {
+            .team-title {
+                font-size: 2.5rem;
+            }
+            
+            .vote-count {
+                font-size: 1.8rem;
+                padding: 10px 20px;
+            }
+            
+            .vs-container {
+                width: 80px;
+                height: 80px;
+            }
+            
+            .vs-text {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="status" id="status">Setting up...</div>
+
+    <div class="team-side largetes" onclick="vote('largetes', event)">
+        <div class="team-title">Largetes</div>
+        <div class="vote-count" id="largetes-count">0 votes</div>
+    </div>
+
+    <div class="vs-container">
+        <div class="vs-text">VS</div>
+    </div>
+
+    <div class="team-side pixeletes" onclick="vote('pixeletes', event)">
+        <div class="team-title">Pixeletes</div>
+        <div class="vote-count" id="pixeletes-count">0 votes</div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, onValue, runTransaction } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        // Guys, dont bug me abt this i dont care about this project in the slightest, this is just because some kid wont stop being a meat rider and tryna settle something hell even this code is from claude 3.5 sonnet
+	const firebaseConfig = {
+ 	 apiKey: "AIzaSyBA1R2EWRhjGKNDzJfx-f8ynUuepeTQN3I",
+	  authDomain: "largetesvotething.firebaseapp.com",
+	  databaseURL: "https://largetesvotething-default-rtdb.firebaseio.com",
+	  projectId: "largetesvotething",
+	  storageBucket: "largetesvotething.firebasestorage.app",
+	  messagingSenderId: "898599644757",
+	  appId: "1:898599644757:web:8ae8f7f8dc626978e66edc",
+	  measurementId: "G-KVZE1NHSKQ"
+	};
+
+
+        let app, database;
+        let isConnected = false;
+
+        // Initialize Firebase
+        try {
+            app = initializeApp(firebaseConfig);
+            database = getDatabase(app);
+            setupRealtimeListeners();
+            updateStatus('Connected - Live Sync Active', 'connected');
+            isConnected = true;
+        } catch (error) {
+            console.error('Firebase setup failed:', error);
+            updateStatus('Offline Mode - Votes won\'t sync', 'disconnected');
+            // Fall back to local storage
+            setupLocalMode();
+        }
+
+        function setupRealtimeListeners() {
+            // Listen for largetes votes
+            const largetesRef = ref(database, 'votes/largetes');
+            onValue(largetesRef, (snapshot) => {
+                const count = snapshot.val() || 0;
+                updateVoteDisplay('largetes', count);
+            });
+
+            // Listen for pixeletes votes  
+            const pixeletesRef = ref(database, 'votes/pixeletes');
+            onValue(pixeletesRef, (snapshot) => {
+                const count = snapshot.val() || 0;
+                updateVoteDisplay('pixeletes', count);
+            });
+        }
+
+        function setupLocalMode() {
+            // Local fallback mode
+            const saved = localStorage.getItem('teamVotes');
+            if (saved) {
+                const votes = JSON.parse(saved);
+                updateVoteDisplay('largetes', votes.largetes || 0);
+                updateVoteDisplay('pixeletes', votes.pixeletes || 0);
+            }
+        }
+
+        window.vote = function(team, event) {
+            if (isConnected) {
+                // Firebase mode - use transaction for atomic increment
+                const teamRef = ref(database, `votes/${team}`);
+                runTransaction(teamRef, (currentValue) => {
+                    return (currentValue || 0) + 1;
+                }).then(() => {
+                    createClickEffect(event);
+                }).catch((error) => {
+                    console.error('Vote failed:', error);
+                    updateStatus('Vote failed - try again', 'disconnected');
+                });
+            } else {
+                // Local mode fallback
+                const saved = JSON.parse(localStorage.getItem('teamVotes') || '{"largetes":0,"pixeletes":0}');
+                saved[team]++;
+                localStorage.setItem('teamVotes', JSON.stringify(saved));
+                updateVoteDisplay(team, saved[team]);
+                createClickEffect(event);
+            }
+        }
+
+        function updateVoteDisplay(team, count) {
+            const element = document.getElementById(`${team}-count`);
+            element.textContent = `${count} vote${count !== 1 ? 's' : ''}`;
+            
+            // Add update animation
+            element.classList.add('updating');
+            setTimeout(() => {
+                element.classList.remove('updating');
+            }, 300);
+        }
+
+        function updateStatus(message, className) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${className}`;
+        }
+
+        function createClickEffect(event) {
+            const effect = document.createElement('div');
+            effect.className = 'click-effect';
+            
+            const rect = event.currentTarget.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            effect.style.left = (x - 50) + 'px';
+            effect.style.top = (y - 50) + 'px';
+            
+            event.currentTarget.appendChild(effect);
+            
+            setTimeout(() => {
+                effect.remove();
+            }, 600);
+        }
+    </script>
+</body>
+</html>
